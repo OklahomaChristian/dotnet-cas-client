@@ -22,6 +22,9 @@ using System.Web;
 using DotNetCasClient.Security;
 using DotNetCasClient.Utils;
 using DotNetCasClient.Validation.Schema.Cas20;
+using System.Xml;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
 
 namespace DotNetCasClient.Validation.TicketValidator
 {
@@ -108,6 +111,7 @@ namespace DotNetCasClient.Validation.TicketValidator
             if (serviceResponse.IsAuthenticationSuccess)
             {
                 AuthenticationSuccess authSuccessResponse = (AuthenticationSuccess)serviceResponse.Item;
+                Dictionary<string, IList<string>> attributes = getAttributesFromResponse(response);
 
                 if (String.IsNullOrEmpty(authSuccessResponse.User))
                 {
@@ -128,7 +132,7 @@ namespace DotNetCasClient.Validation.TicketValidator
                 } 
                 else
                 {
-                    return new CasPrincipal(new Assertion(authSuccessResponse.User), proxyGrantingTicketIou);
+                    return new CasPrincipal(new Assertion(authSuccessResponse.User,attributes), proxyGrantingTicketIou);
                 }
             }
             
@@ -156,6 +160,34 @@ namespace DotNetCasClient.Validation.TicketValidator
             }
 
             throw new TicketValidationException("Failed to validate CAS ticket.");
+        }
+        
+        Dictionary<string, IList<string>> getAttributesFromResponse(string response)
+        {
+            Dictionary<string, IList<string>> attributes = new Dictionary<string,IList<string>>();
+            // reqex required to remove extra data returned from RubyCAS
+            Regex regex = new Regex("^.*\n- \"?(.+?)\"?\n$");
+            try
+            {
+                XmlDocument doc = new XmlDocument();
+                doc.LoadXml(response);
+                XmlNodeList XMLAttributes = doc.GetElementsByTagName("cas:authenticationSuccess")[0].ChildNodes;
+                foreach(XmlNode XMLAttribute in XMLAttributes)
+                {
+                    IList<string> AttributeValue = new List<string>(1);
+                    MatchCollection result = regex.Matches(XMLAttribute.InnerText.ToString());
+                    if (result.Count == 1)
+                    {
+                        AttributeValue.Add(result[0].Groups[1].Value);
+                        attributes.Add(XMLAttribute.Name, AttributeValue);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            return attributes;
         }
         #endregion
     }
